@@ -1,0 +1,161 @@
+<html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendario di Classe</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f7f7f7}
+header{background:#2c3e50;color:white;padding:1rem;text-align:center}
+header h1{margin:0;font-size:1.8rem}
+header button{margin-top:.5rem;padding:.5rem 1rem;background:#1abc9c;border:none;color:white;border-radius:5px;cursor:pointer}
+#calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:10px}
+.day{background:white;min-height:120px;padding:5px;position:relative;border-radius:5px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.day-header{font-weight:bold;margin-bottom:3px}
+.event{padding:2px 4px;margin:2px 0;border-radius:4px;color:white;font-size:.85rem;display:flex;justify-content:space-between;align-items:center}
+.student{font-size:.75rem;margin-left:10px;display:flex;align-items:center}
+.student span{margin-right:5px}
+.student.confirmed{color:green}
+.student.pending{color:orange}
+#login,#eventForm{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:1.5rem;border-radius:8px;z-index:10;width:300px;box-shadow:0 5px 15px rgba(0,0,0,.3)}
+#overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:5}
+.close{float:right;cursor:pointer;color:red;font-weight:bold}
+select,input,button{width:100%;margin-bottom:10px;padding:5px;border-radius:4px;border:1px solid #ccc}
+button{cursor:pointer;background:#1abc9c;color:white;border:none}
+</style>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<header>
+<h1>Calendario di Classe</h1>
+<button onclick="showLogin()">Admin Login</button>
+</header>
+
+<div id="calendar"></div>
+<div id="overlay"></div>
+
+<!-- Login -->
+<div id="login">
+<span class="close" onclick="closeLogin()">×</span>
+<h3>Login Admin</h3>
+<input type="password" id="password" placeholder="Inserisci password">
+<button onclick="login()">Accedi</button>
+</div>
+
+<!-- Form evento -->
+<div id="eventForm">
+<span class="close" onclick="closeEventForm()">×</span>
+<h3>Aggiungi Evento</h3>
+<label>Materia:
+<select id="eventSubject">
+<option>Filosofia</option><option>Storia</option><option>Inglese</option><option>Italiano</option><option>Latino</option>
+<option>Matematica</option><option>Fisica</option><option>Scienze</option><option>Disegno Tecnico</option><option>Religione</option>
+<option>Educazione Fisica</option><option>Educazione Civica</option>
+</select>
+</label>
+<label>Tipo:
+<select id="eventType"><option>Verifica</option><option>Interrogazione</option></select>
+</label>
+<button onclick="addEvent()">Salva</button>
+</div>
+
+<script>
+// --- CONFIGURAZIONE FIREBASE ---
+// Sostituisci con i dati del tuo progetto Web Firebase
+const firebaseConfig = {
+   apiKey: "AIzaSyCauMqWr2CqtJWhHaT0q7P0_N_2vHpM_rI",
+  authDomain: "calendario-classe.firebaseapp.com",
+  projectId: "calendario-classe",
+  storageBucket: "calendario-classe.firebasestorage.app",
+  messagingSenderId: "718120234727",
+  appId: "1:718120234727:web:31facd835d79a83563fc42",
+  measurementId: "G-FT014N70PP
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let isAdmin=false;
+let selectedDay=null;
+const passwordAdmin="classe2025";
+
+const colors={
+'Filosofia':'#8e44ad','Storia':'#d35400','Inglese':'#2980b9','Italiano':'#27ae60','Latino':'#16a085',
+'Matematica':'#f39c12','Fisica':'#c0392b','Scienze':'#2ecc71','Disegno Tecnico':'#7f8c8d','Religione':'#d35400',
+'Educazione Fisica':'#e67e22','Educazione Civica':'#3498db'
+};
+
+// --- Funzioni interfaccia ---
+function showLogin(){ document.getElementById('overlay').style.display='block'; document.getElementById('login').style.display='block'; }
+function closeLogin(){ document.getElementById('overlay').style.display='none'; document.getElementById('login').style.display='none'; }
+function login(){ const pw=document.getElementById('password').value; if(pw===passwordAdmin){ isAdmin=true; alert('Accesso admin consentito'); closeLogin(); renderCalendar(); } else alert('Password errata!'); }
+function showEventForm(day){ if(!isAdmin){ alert('Solo admin possono aggiungere eventi'); return; } selectedDay=day; document.getElementById('overlay').style.display='block'; document.getElementById('eventForm').style.display='block'; }
+function closeEventForm(){ document.getElementById('overlay').style.display='none'; document.getElementById('eventForm').style.display='none'; }
+
+function addEvent(){ 
+  const subject=document.getElementById('eventSubject').value;
+  const type=document.getElementById('eventType').value.toLowerCase();
+  db.collection("events").add({ day:selectedDay, subject, type, students:[] }).then(()=>closeEventForm());
+}
+
+function bookInterrogation(docId){ 
+  const name=prompt("Inserisci il tuo nome per prenotare:");
+  if(!name) return;
+  const student={name,confirmed:false};
+  db.collection("events").doc(docId).update({ students: firebase.firestore.FieldValue.arrayUnion(student) });
+}
+
+function confirmBooking(docId, studentIndex){
+  db.collection("events").doc(docId).get().then(doc=>{
+    if(doc.exists){
+      let data=doc.data();
+      data.students[studentIndex].confirmed=true;
+      db.collection("events").doc(docId).set(data);
+    }
+  });
+}
+
+function renderCalendar(){
+  const calendarEl=document.getElementById('calendar');
+  calendarEl.innerHTML='';
+  const daysOfWeek=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  for(let d of daysOfWeek){ const header=document.createElement('div'); header.className='day'; header.style.background='#ecf0f1'; header.innerText=d; calendarEl.appendChild(header);}
+  const date=new Date();
+  const year=date.getFullYear();
+  const month=date.getMonth();
+  const firstDay=new Date(year,month,1).getDay();
+  const lastDate=new Date(year,month+1,0).getDate();
+  let dayCounter=1;
+  const dayMap={};
+  for(let i=0;i<42;i++){
+    const dayEl=document.createElement('div'); dayEl.className='day';
+    if(i>=((firstDay+6)%7) && dayCounter<=lastDate){
+      const dayStr=`${year}-${String(month+1).padStart(2,'0')}-${String(dayCounter).padStart(2,'0')}`;
+      dayEl.innerHTML=`<div class="day-header">${dayCounter}</div>`;
+      dayEl.onclick=()=>{ if(isAdmin) showEventForm(dayStr); }
+      dayMap[dayStr]=dayEl; dayCounter++;
+    }
+    calendarEl.appendChild(dayEl);
+  }
+  db.collection("events").get().then(querySnapshot=>{
+    querySnapshot.forEach(doc=>{
+      const ev=doc.data();
+      const dayEl=dayMap[ev.day];
+      if(dayEl){
+        const evEl=document.createElement('div'); evEl.className='event'; evEl.style.background=colors[ev.subject] || (ev.type==='verifica'?'#e74c3c':'#3498db');
+        evEl.innerHTML=`${ev.subject} (${ev.type.charAt(0).toUpperCase()+ev.type.slice(1)})`;
+        if(ev.type==='interrogazione'){
+          const btn=document.createElement('button'); btn.innerText='Prenota'; btn.style.fontSize='0.7rem'; btn.onclick=()=>bookInterrogation(doc.id); evEl.appendChild(btn);
+          ev.students.forEach((s,si)=>{
+            const sEl=document.createElement('div'); sEl.className='student '+(s.confirmed?'confirmed':'pending'); sEl.innerHTML=`<span>${s.name}</span>`;
+            if(isAdmin && !s.confirmed){ const confirmBtn=document.createElement('button'); confirmBtn.innerText='✔'; confirmBtn.style.fontSize='0.7rem'; confirmBtn.onclick=()=>confirmBooking(doc.id,si); sEl.appendChild(confirmBtn);}
+            evEl.appendChild(sEl);
+          });
+        }
+        dayEl.appendChild(evEl);
+      }
+   </html>
+   </html>
